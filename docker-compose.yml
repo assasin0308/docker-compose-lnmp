@@ -1,0 +1,146 @@
+version: "3.8"
+
+services:
+
+  redis:
+    image: redis:6.0
+    container_name: lnmp_redis
+    build: ./redis
+    volumes:
+      - ./redis/redis.conf/:/etc/redis.conf:ro
+      - ./redis/data:/usr/local/redis/data
+      - ./redis/redis.log:/usr/local/redis/redis.log
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "6379:6379"
+    command: [ "redis-server", "/etc/redis.conf" ]
+    networks:
+      - backend
+
+  mysql:
+    image: mysql:8.0
+    container_name: lnmp_mysql
+    volumes:
+      - ./mysql/conf.d:/etc/mysql/my.cnf:ro
+      - ./mysql/data:/var/lib/mysql
+      - ./mysql/log:/data/mysql/logs
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+      - TZ=Asia/Shanghai
+#    platform: linux/x86_64 #针对mac M1芯片
+    ports:
+      - "3306:3306"
+    networks:
+          - backend
+
+  mongo:
+    image: mongo:6.0
+    container_name: lnmp_mongo
+    volumes:
+      - ./mongo/data:/data/db
+      - ./mongo/log:/var/log/mongodb
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=owenweb
+      - MONGO_INITDB_ROOT_PASSWORD=owenweb
+      - TZ=Asia/Shanghai
+    ports:
+      - "27017:27017"
+    networks:
+          - backend
+
+  php:
+    image: php:8.1-fpm
+    container_name: lnmp_php
+    build: ./php/extension
+    #防止启动php失败
+    stdin_open: true
+    #防止启动php失败
+    tty: true
+    depends_on:
+      - "mysql"
+      - "redis"
+      - "mongo"
+    volumes:
+      - ./nginx/www:/var/www/html
+      - ./php/log:/var/log/php
+      - ./php/etc/php.ini:/usr/local/etc/php/php.ini
+#      - ./php/etc/php-fpm.conf:/usr/local/etc/php-fpm.conf    # 映射配置文件
+#      - ./php/etc/php-fpm.d:/usr/local/etc/php-fpm.d
+    links:
+      - mysql:mysql
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "9000:9000"
+    networks:
+          - frontend
+          - backend
+
+  phpcli:
+    image: php:8.1-cli
+    container_name: lnmp_phpcli
+    build: ./php/extension-phpcli
+    #防止启动php失败
+    stdin_open: true
+    #防止启动php失败
+    tty: true
+    depends_on:
+      - "mysql"
+      - "redis"
+      - "mongo"
+    volumes:
+      - ./nginx/www:/var/www/html
+      - ./php/log:/var/log/php
+      - ./php/etc/php.ini:/usr/local/etc/php/php.ini
+    #      - ./php/etc/php-fpm.conf:/usr/local/etc/php-fpm.conf    # 映射配置文件
+    #      - ./php/etc/php-fpm.d:/usr/local/etc/php-fpm.d
+    links:
+      - mysql:mysql
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "8241:8241"
+    networks:
+      - frontend
+      - backend
+
+  nginx:
+    image: nginx:1.22
+    container_name: lnmp_nginx
+    # 依赖关系 先跑php nginx必须依赖php的，所以要用depends_on
+    depends_on:
+      - "php"
+    volumes:
+      - ./nginx/ssl/:/etc/nginx/ssl/
+      - ./nginx/conf:/etc/nginx/nginx/  # 主配置文件
+      - ./nginx/www:/usr/share/nginx/html  # 项目目录
+      - ./nginx/log:/var/log/nginx    # 日志
+    links:
+      - php:php
+      - phpcli:phpcli
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+          - frontend
+
+  node:
+    image: node:18.0
+    container_name: lnmp_node
+    volumes:
+      - ./node:/node
+    environment:
+      - TZ=Asia/Shanghai
+    ports:
+       - "3000:3000"
+    command: [ "tail", "-f", "/dev/null" ]
+    networks:
+      - backend
+
+
+networks:
+  frontend:
+  backend:
